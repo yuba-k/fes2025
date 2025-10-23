@@ -8,6 +8,10 @@ import threading
 import ctypes
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+import math
+import time
+
+import imgProcess
 
 class ImageReceiverApp:
     def __init__(self, master):
@@ -19,6 +23,7 @@ class ImageReceiverApp:
         self.label.grid(column=0,row=0)
         img = Image.open('test.jpg')
         img = ImageTk.PhotoImage(img)
+        self.latest_frame = None
 
         self.imgCanvas = tk.Canvas(self.label,bg="#70FF03",width=800,height=600)
         self.item = self.imgCanvas.create_image(0, 0, image=img, anchor=tk.NW)
@@ -43,43 +48,49 @@ class ImageReceiverApp:
         pixel = tk.PhotoImage(width=1, height=1)
         self.driverLabel = tk.Label(master,bg="#1605FF")
         self.driverLabel.grid(column=0,row=1)
-        tk.Button(self.driverLabel,text="FORWARD",height=5,width=80,command=lambda:self.send_command("forward")).pack(side=tk.TOP)
-        tk.Button(self.driverLabel,text="RIGHT",height=5,width=28,command=lambda:self.send_command("right")).pack(side=tk.RIGHT)
-        tk.Button(self.driverLabel,text="LEFT",height=5,width=28,command=lambda:self.send_command("left")).pack(side=tk.LEFT)
-        tk.Button(self.driverLabel,text="BACK",height=5,width=20,command=lambda:self.send_command("back")).pack(side=tk.BOTTOM)
+        self.forward = tk.Button(self.driverLabel,text="FORWARD",height=5,width=80,command=lambda:self.send_command("forward"))
+        self.forward.pack(side=tk.TOP)
+        self.right = tk.Button(self.driverLabel,text="RIGHT",height=5,width=28,command=lambda:self.send_command("right"))
+        self.right.pack(side=tk.RIGHT)
+        self.left = tk.Button(self.driverLabel,text="LEFT",height=5,width=28,command=lambda:self.send_command("left"))
+        self.left.pack(side=tk.LEFT)
+        self.back = tk.Button(self.driverLabel,text="BACK",height=5,width=20,command=lambda:self.send_command("back"))
+        self.back.pack(side=tk.BOTTOM)
 
-        frame = tk.Frame(self.master)
+        self.figFrame = tk.Frame(self.master)
         # matplotlibの描画領域の作成
         fig = Figure(figsize=(4,2))
         self.ax = fig.add_subplot(1, 1, 1)
         # matplotlibの行場領域とウィジェットの関連付け
-        self.fig_canvas = FigureCanvasTkAgg(fig, frame)
+        self.fig_canvas = FigureCanvasTkAgg(fig, self.figFrame)
         # matplotlibのツールバーを作成
         #self.toolbar = NavigationToolbar2Tk(self.fig_canvas, frame)
         # matploglibのグラフをフレームに配置
         self.fig_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        frame.grid(column=1,row=1)
-
+        self.figFrame.grid(column=1,row=1)
+        self.x = [];self.y = []
         self.current_image = None  # 画像保持用
+
+        threading.Thread(target=self.auto_drive_loop,daemon=True).start()
 
     def start_connect(self):
         print("接続開始")
         self.connectButton["state"] = tk.DISABLED
         ipaddr = self.ipaddrEntry.get()
         # WebSocket接続開始
-        self.ws = websocket.WebSocketApp(
+        self.ws = websocket.WebSocketApp(#画像
             f"ws://{ipaddr}:8765",  # ← IPアドレスを適宜変更
             on_message=self.on_message,
             on_error=self.on_error,
             on_close=self.on_close,
             on_open=self.on_open
         )
-        self.wsSecond = websocket.WebSocketApp(
+        self.wsSecond = websocket.WebSocketApp(#加速度データ
             f"ws://{ipaddr}:9000",  # ← IPアドレスを適宜変更
             on_message=self.printmessage,
-            on_error=self.on_close,
+            on_error=self.on_error,
         )
-        self.wsThird = websocket.WebSocketApp(
+        self.wsThird = websocket.WebSocketApp(#コマンド
             f"ws://{ipaddr}:9001",
             on_error=self.on_error,
         )
@@ -89,7 +100,18 @@ class ImageReceiverApp:
         threading.Thread(target=self.wsThird.run_forever, daemon=True).start()
 
     def printmessage(self,ws,message):
-        print(message)
+        mg = [float(v) for v in message.split(",")]
+        self.master.after(0,self.update_graph,mg)
+        # print(f"x:{math.degrees(self.mg[0])}")
+        # print(f"y:{math.degrees(self.mg[1])}")
+        # print(f"z:{math.degrees(self.mg[2])}")
+
+    def update_graph(self,mg):
+        self.x.append(math.degrees(mg[2]));self.y.append(mg[3])
+        self.ax.plot(self.y,self.x,color="#242424")
+        self.fig_canvas.draw()
+        #self.figFrame.update()
+
 
     def on_open(self, ws):
         print("接続成功")
@@ -101,10 +123,12 @@ class ImageReceiverApp:
             np_arr = np.frombuffer(img_data, np.uint8)
             frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = np.flipud(frame)
+            frame = np.fliplr(frame)
             frame = cv2.resize(frame,(800,600))
             img = Image.fromarray(frame)
             imgtk = ImageTk.PhotoImage(image=img)
-
+            self.latest_frame = frame.copy()
             # GUIスレッドで画像更新
             self.master.after(0, self.update_image, imgtk)
         except Exception as e:
@@ -113,6 +137,27 @@ class ImageReceiverApp:
     def update_image(self, imgtk):
         self.current_image = imgtk  # 保持してGCを防ぐ
         self.imgCanvas.itemconfig(self.item,image=self.current_image)
+
+    def auto_drive_loop(self):
+        flag = False #autoからmanualに切り替わった際，1度のみstopコマンドを送信
+        while True:
+            if self.checkAutoMode.get() and self.latest_frame is not None:
+                self.forward["state"] = tk.DISABLED
+                self.right["state"] = tk.DISABLED
+                self.left["state"] = tk.DISABLED
+                self.back["state"] = tk.DISABLED
+                cmd = imgProcess.imgprocess(self.latest_frame)
+                self.wsThird.send(cmd)
+                flag = True
+            else:
+                if flag:
+                    self.wsThird.send("stop");flag = False
+                self.forward["state"] = tk.NORMAL
+                self.right["state"] = tk.NORMAL
+                self.left["state"] = tk.NORMAL
+                self.back["state"] = tk.NORMAL
+
+            time.sleep(0.5)
 
     def on_error(self, ws, error):
         print(f"WebSocketエラー: {error}")
