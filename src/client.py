@@ -25,28 +25,45 @@ class ImageReceiverApp:
         img = ImageTk.PhotoImage(img)
         self.latest_frame = None
 
-        self.imgCanvas = tk.Canvas(self.label,bg="#70FF03",width=800,height=600)
+        self.imgCanvas = tk.Canvas(self.label,width=800,height=600)#,bg="#70FF03"
         self.item = self.imgCanvas.create_image(0, 0, image=img, anchor=tk.NW)
         self.imgCanvas.pack()
 
-        self.settingLabel = tk.Label(master,bg="#F80808")
-        self.settingLabel.grid(column=1,row=0)
+        self.sidepanelLable = tk.Label(master)#,bg="#F900E9"
+        self.sidepanelLable.grid(column=1,row=0)
+        self.settingLabel = tk.Label(self.sidepanelLable)#,bg="#F80808"
+        self.settingLabel.pack(side=tk.TOP)
+        self.processimgLable = tk.Label(self.sidepanelLable)#,bg="#FFF200"
+        self.processimgLable.pack(side=tk.BOTTOM)
+
+        self.processCanvas = tk.Canvas(self.processimgLable,width=500,height=400)
+        self.processCanvas.pack()
+        img = Image.open('test.jpg')
+        img = ImageTk.PhotoImage(img)
+        self.processimg = self.processCanvas.create_image(0, 0, image=img, anchor=tk.NW)
 
         self.ipaddr = tk.StringVar()
         self.ipaddrEntry = tk.Entry(self.settingLabel,textvariable=self.ipaddr)
         self.ipaddrEntry.grid(column=0,row=0)
 
-        self.connectButton = tk.Button(self.settingLabel,text="接続",command=self.start_connect)
-        self.connectButton.grid(column=0,row=1)
+        self.conndisconnLabel = tk.Label(self.settingLabel)#,bg="#FF00C8"
+        self.conndisconnLabel.grid(column=0,row=1)
+        self.connectButton = tk.Button(self.conndisconnLabel,text="接続",command=self.start_connect)
+        self.connectButton.pack(side=tk.RIGHT)
+        self.disconnectButton = tk.Button(self.conndisconnLabel,text="切断",command=self.close)
+        self.disconnectButton.pack(side=tk.LEFT)
+        self.disconnectButton["state"] = tk.DISABLED
 
         self.checkAutoMode = tk.BooleanVar()
         self.auto = tk.Radiobutton(self.settingLabel,text="自律走行",variable=self.checkAutoMode,value=True)
         self.manual = tk.Radiobutton(self.settingLabel,text="遠隔制御",variable=self.checkAutoMode,value=False)
         self.auto.grid(column=0,row=2)
         self.manual.grid(column=0,row=3)
+        self.stopButton = tk.Button(self.settingLabel,text="停止",command=lambda:self.send_command("stop"))
+        self.stopButton.grid(column=0,row=4)
 
         pixel = tk.PhotoImage(width=1, height=1)
-        self.driverLabel = tk.Label(master,bg="#1605FF")
+        self.driverLabel = tk.Label(master)#,bg="#1605FF"
         self.driverLabel.grid(column=0,row=1)
         self.forward = tk.Button(self.driverLabel,text="FORWARD",height=5,width=80,command=lambda:self.send_command("forward"))
         self.forward.pack(side=tk.TOP)
@@ -76,6 +93,7 @@ class ImageReceiverApp:
     def start_connect(self):
         print("接続開始")
         self.connectButton["state"] = tk.DISABLED
+        self.disconnectButton["state"] = tk.NORMAL
         ipaddr = self.ipaddrEntry.get()
         # WebSocket接続開始
         self.ws = websocket.WebSocketApp(#画像
@@ -125,7 +143,7 @@ class ImageReceiverApp:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame = np.flipud(frame)
             frame = np.fliplr(frame)
-            frame = cv2.resize(frame,(800,600))
+            frame = cv2.resize(frame,dsize = (800,600))
             img = Image.fromarray(frame)
             imgtk = ImageTk.PhotoImage(image=img)
             self.latest_frame = frame.copy()
@@ -138,32 +156,82 @@ class ImageReceiverApp:
         self.current_image = imgtk  # 保持してGCを防ぐ
         self.imgCanvas.itemconfig(self.item,image=self.current_image)
 
+    # def auto_drive_loop(self):
+    #     flag = False #autoからmanualに切り替わった際，1度のみstopコマンドを送信
+    #     processingflag = False
+    #     while True:
+    #         if self.checkAutoMode.get() and self.latest_frame is not None:
+    #             self.forward["state"] = tk.DISABLED
+    #             self.right["state"] = tk.DISABLED
+    #             self.left["state"] = tk.DISABLED
+    #             self.back["state"] = tk.DISABLED
+    #             cmd,img = imgProcess.imgprocess(self.latest_frame)
+    #             self.wsThird.send(cmd)
+    #             flag = True
+    #             img = Image.fromarray(img)
+    #             img = ImageTk.PhotoImage(image=img)
+    #             self.processimgLable.after(0,self.update_peocessimg,img)
+    #         else:
+    #             if flag:
+    #                 self.wsThird.send("stop");flag = False
+    #             self.forward["state"] = tk.NORMAL
+    #             self.right["state"] = tk.NORMAL
+    #             self.left["state"] = tk.NORMAL
+    #             self.back["state"] = tk.NORMAL
+
+    #         time.sleep(0.5)
+
     def auto_drive_loop(self):
-        flag = False #autoからmanualに切り替わった際，1度のみstopコマンドを送信
+        flag = False
+        processing = False  # 現在処理中かを示すフラグ
+
         while True:
             if self.checkAutoMode.get() and self.latest_frame is not None:
-                self.forward["state"] = tk.DISABLED
-                self.right["state"] = tk.DISABLED
-                self.left["state"] = tk.DISABLED
-                self.back["state"] = tk.DISABLED
-                cmd = imgProcess.imgprocess(self.latest_frame)
-                self.wsThird.send(cmd)
-                flag = True
+                if not processing:  # 前回の処理が終わっているときだけ開始
+                    processing = True
+                    frame_copy = self.latest_frame.copy()
+
+                    def process_and_update():
+                        nonlocal processing, flag
+                        cmd, img = imgProcess.imgprocess(frame_copy)
+                        self.wsThird.send(cmd)
+                        flag = True
+                        cv2.resize(img,dsize = (400,300))
+                        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                        pil_img = Image.fromarray(img)
+                        imgtk = ImageTk.PhotoImage(image=pil_img)
+                        self.master.after(0, self.update_peocessimg, imgtk)
+                        processing = False  # 処理完了
+
+                    threading.Thread(target=process_and_update, daemon=True).start()
+
+                # 操作ボタン無効化
+                self.forward["state"] = self.right["state"] = self.left["state"] = self.back["state"] = tk.DISABLED
+
             else:
                 if flag:
-                    self.wsThird.send("stop");flag = False
-                self.forward["state"] = tk.NORMAL
-                self.right["state"] = tk.NORMAL
-                self.left["state"] = tk.NORMAL
-                self.back["state"] = tk.NORMAL
+                    self.wsThird.send("stop")
+                    flag = False
+                self.forward["state"] = self.right["state"] = self.left["state"] = self.back["state"] = tk.NORMAL
 
-            time.sleep(0.5)
+            time.sleep(0.05)  # 少し短くしてもOK（メインループは軽い）
+
+
+    def update_peocessimg(self,imgtk):
+        self.current_image_process = imgtk
+        self.processCanvas.itemconfig(self.processimg,image=self.current_image_process)
+
 
     def on_error(self, ws, error):
         print(f"WebSocketエラー: {error}")
 
     def on_close(self, ws, close_status_code, close_msg):
         print("接続終了")
+
+    def close(self):
+        self.ws.close()
+        self.wsSecond.close()
+        self.wsThird.close()
 
     def send_command(self,dir):
         self.wsThird.send(dir)
