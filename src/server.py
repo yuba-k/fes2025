@@ -20,7 +20,7 @@ picam = Picamera2()
 picam.configure(picam.create_still_configuration(main={"format":"RGB888","size":(400,300)}))
 
 mv = motor.Motor()
-gyro = {"x":0,"y":0,"z":0}
+gyro = {"x":0.0,"y":0.0,"z":0.0}
 
 async def handler(websocket):
     picam.start()
