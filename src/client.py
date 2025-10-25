@@ -25,15 +25,15 @@ class ImageReceiverApp:
         img = ImageTk.PhotoImage(img)
         self.latest_frame = None
 
-        self.imgCanvas = tk.Canvas(self.label,width=800,height=600)#,bg="#70FF03"
+        self.imgCanvas = tk.Canvas(self.label,width=800,height=600)
         self.item = self.imgCanvas.create_image(0, 0, image=img, anchor=tk.NW)
         self.imgCanvas.pack()
 
-        self.sidepanelLable = tk.Label(master)#,bg="#F900E9"
+        self.sidepanelLable = tk.Label(master)
         self.sidepanelLable.grid(column=1,row=0)
-        self.settingLabel = tk.Label(self.sidepanelLable)#,bg="#F80808"
+        self.settingLabel = tk.Label(self.sidepanelLable)
         self.settingLabel.pack(side=tk.TOP)
-        self.processimgLable = tk.Label(self.sidepanelLable)#,bg="#FFF200"
+        self.processimgLable = tk.Label(self.sidepanelLable)
         self.processimgLable.pack(side=tk.BOTTOM)
 
         self.processCanvas = tk.Canvas(self.processimgLable,width=500,height=400)
@@ -46,7 +46,7 @@ class ImageReceiverApp:
         self.ipaddrEntry = tk.Entry(self.settingLabel,textvariable=self.ipaddr)
         self.ipaddrEntry.grid(column=0,row=0)
 
-        self.conndisconnLabel = tk.Label(self.settingLabel)#,bg="#FF00C8"
+        self.conndisconnLabel = tk.Label(self.settingLabel)
         self.conndisconnLabel.grid(column=0,row=1)
         self.connectButton = tk.Button(self.conndisconnLabel,text="接続",command=self.start_connect)
         self.connectButton.pack(side=tk.RIGHT)
@@ -63,7 +63,7 @@ class ImageReceiverApp:
         self.stopButton.grid(column=0,row=4)
 
         pixel = tk.PhotoImage(width=1, height=1)
-        self.driverLabel = tk.Label(master)#,bg="#1605FF"
+        self.driverLabel = tk.Label(master)
         self.driverLabel.grid(column=0,row=1)
         self.forward = tk.Button(self.driverLabel,text="FORWARD",height=5,width=80,command=lambda:self.send_command("forward"))
         self.forward.pack(side=tk.TOP)
@@ -80,8 +80,6 @@ class ImageReceiverApp:
         self.ax = fig.add_subplot(1, 1, 1)
         # matplotlibの行場領域とウィジェットの関連付け
         self.fig_canvas = FigureCanvasTkAgg(fig, self.figFrame)
-        # matplotlibのツールバーを作成
-        #self.toolbar = NavigationToolbar2Tk(self.fig_canvas, frame)
         # matploglibのグラフをフレームに配置
         self.fig_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.figFrame.grid(column=1,row=1)
@@ -120,16 +118,11 @@ class ImageReceiverApp:
     def printmessage(self,ws,message):
         mg = [float(v) for v in message.split(",")]
         self.master.after(0,self.update_graph,mg)
-        # print(f"x:{math.degrees(self.mg[0])}")
-        # print(f"y:{math.degrees(self.mg[1])}")
-        # print(f"z:{math.degrees(self.mg[2])}")
 
     def update_graph(self,mg):
         self.x.append(math.degrees(mg[2]));self.y.append(mg[3])
         self.ax.plot(self.y,self.x,color="#242424")
         self.fig_canvas.draw()
-        #self.figFrame.update()
-
 
     def on_open(self, ws):
         print("接続成功")
@@ -155,31 +148,6 @@ class ImageReceiverApp:
     def update_image(self, imgtk):
         self.current_image = imgtk  # 保持してGCを防ぐ
         self.imgCanvas.itemconfig(self.item,image=self.current_image)
-
-    # def auto_drive_loop(self):
-    #     flag = False #autoからmanualに切り替わった際，1度のみstopコマンドを送信
-    #     processingflag = False
-    #     while True:
-    #         if self.checkAutoMode.get() and self.latest_frame is not None:
-    #             self.forward["state"] = tk.DISABLED
-    #             self.right["state"] = tk.DISABLED
-    #             self.left["state"] = tk.DISABLED
-    #             self.back["state"] = tk.DISABLED
-    #             cmd,img = imgProcess.imgprocess(self.latest_frame)
-    #             self.wsThird.send(cmd)
-    #             flag = True
-    #             img = Image.fromarray(img)
-    #             img = ImageTk.PhotoImage(image=img)
-    #             self.processimgLable.after(0,self.update_peocessimg,img)
-    #         else:
-    #             if flag:
-    #                 self.wsThird.send("stop");flag = False
-    #             self.forward["state"] = tk.NORMAL
-    #             self.right["state"] = tk.NORMAL
-    #             self.left["state"] = tk.NORMAL
-    #             self.back["state"] = tk.NORMAL
-
-    #         time.sleep(0.5)
 
     def auto_drive_loop(self):
         flag = False
@@ -214,7 +182,7 @@ class ImageReceiverApp:
                     flag = False
                 self.forward["state"] = self.right["state"] = self.left["state"] = self.back["state"] = tk.NORMAL
 
-            time.sleep(0.05)  # 少し短くしてもOK（メインループは軽い）
+            time.sleep(0.05)
 
 
     def update_peocessimg(self,imgtk):

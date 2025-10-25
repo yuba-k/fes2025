@@ -32,17 +32,6 @@ async def handler(websocket):
             _, buffer = cv2.imencode('.jpg', frame)
             img_str = base64.b64encode(buffer).decode('utf-8')
             await websocket.send(img_str)
-
-            # コマンド受信
-#            try:
-#                command = await asyncio.wait_for(websocket.recv(), timeout=0.1)
-#                if command == "forward":
-#                    GPIO.output(18, GPIO.HIGH)
-#                elif command == "stop":
-#                    GPIO.output(18, GPIO.LOW)
-#                print(command)
-#            except asyncio.TimeoutError:
-#                pass
     finally:
         GPIO.cleanup()
         picam.close()
@@ -90,13 +79,6 @@ def start_motor():
 
 def gyro_angle():
     global gyro
-#    while True:
-#        print("動いてます")
-##        gyro["x"] = 10
-#        gyro["y"] = 5
-#        gyro["z"] = 1
-#        time.sleep(1)
-#    global angle
     i2c = board.I2C()
     sensor = LSM6DS33(i2c)
     dt = 0.05
